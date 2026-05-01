@@ -41,7 +41,15 @@ const COLLECTIONS_ERROR_MESSAGE =
   'PocketBase is missing required app collections such as group_memberships. Create the collections from README.md, then reload.';
 const formatSyncError = (error) => {
   const status = error?.status ? `Sync failed (${error.status})` : 'Sync failed';
-  const message = error?.response?.message || error?.message || 'Unknown PocketBase error.';
+  const fieldErrors = error?.response?.data
+    ? Object.entries(error.response.data)
+        .map(([field, details]) => {
+          const detailMessage = details?.message || details?.code || 'Invalid value';
+          return `${field}: ${detailMessage}`;
+        })
+        .join('; ')
+    : '';
+  const message = fieldErrors || error?.response?.message || error?.message || 'Unknown PocketBase error.';
   return `${status}: ${message}`;
 };
 
@@ -1014,7 +1022,7 @@ window.splitbeneApp = function splitbeneApp() {
           group: group.remoteId,
           auth_user: member.authUserId || null,
           name: member.name,
-          email: member.email || '',
+          email: member.email || null,
           is_offline: !!member.isOffline,
           invited: !!member.invited,
           local_id: member.id,
