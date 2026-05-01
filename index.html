@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Splitbene</title>
+  </head>
+  <body class="bg-slate-100 text-slate-900">
+    <div id="app" x-data="splitbeneApp()" x-init="init()" class="min-h-screen">
+      <header class="bg-slate-900 text-white">
+        <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+          <div>
+            <h1 class="text-xl font-semibold">Splitbene</h1>
+            <p class="text-sm text-slate-300">Track group expenses online and offline</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium" :class="online ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-100'" x-text="online ? 'Online' : 'Offline'"></span>
+            <template x-if="isAuthenticated">
+              <button type="button" class="rounded-md bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" @click="logout()">Log out</button>
+            </template>
+            <button type="button" class="rounded-md bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" @click="showSettings = !showSettings">PocketBase</button>
+          </div>
+        </div>
+        <div x-show="showSettings" class="border-t border-slate-800 bg-slate-950/80">
+          <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3 sm:px-6 lg:px-8">
+            <label class="text-xs uppercase tracking-wide text-slate-400">PocketBase URL</label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input x-model="pocketbaseUrl" placeholder="https://pocketbase.example.com" class="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none ring-sky-500 focus:ring" />
+              <button type="button" class="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium hover:bg-sky-500" @click="savePocketbaseUrl()">Save</button>
+              <button type="button" class="rounded-md bg-slate-700 px-3 py-2 text-sm font-medium hover:bg-slate-600 disabled:opacity-60" @click="syncNow(true)" :disabled="syncing" x-show="isAuthenticated" x-text="syncing ? 'Syncing...' : 'Sync Now'"></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8" x-show="!authReady">
+        <div class="rounded-xl bg-white p-6 text-sm text-slate-600 shadow-sm">Loading...</div>
+      </main>
+
+      <main class="mx-auto max-w-3xl px-4 py-8 sm:px-6" x-show="authReady && !isAuthenticated">
+        <section class="rounded-xl bg-white p-5 shadow-sm sm:p-8">
+          <h2 class="text-2xl font-semibold">Welcome to Splitbene</h2>
+          <p class="mt-2 text-sm text-slate-500">Create an account first, then sign in to manage shared expenses.</p>
+
+          <div class="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 p-1 text-sm">
+            <button type="button" class="rounded-md px-3 py-2" :class="authMode === 'register' ? 'bg-slate-900 text-white' : 'hover:bg-slate-100'" @click="authMode = 'register'">Register</button>
+            <button type="button" class="rounded-md px-3 py-2" :class="authMode === 'login' ? 'bg-slate-900 text-white' : 'hover:bg-slate-100'" @click="authMode = 'login'">Log in</button>
+          </div>
+
+          <p x-show="authError" class="mt-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" x-text="authError"></p>
+
+          <form class="mt-4 grid gap-3" x-show="authMode === 'register'" @submit.prevent="register()">
+            <input x-model="registerForm.name" class="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Full name" required />
+            <input x-model="registerForm.email" type="email" class="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Email" required />
+            <input x-model="registerForm.password" type="password" class="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Password" required minlength="8" />
+            <input x-model="registerForm.passwordConfirm" type="password" class="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Confirm password" required minlength="8" />
+            <button class="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60" :disabled="authLoading" type="submit">Create account</button>
+          </form>
+
+          <form class="mt-4 grid gap-3" x-show="authMode === 'login'" @submit.prevent="login()">
+            <input x-model="loginForm.email" type="email" class="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Email" required />
+            <input x-model="loginForm.password" type="password" class="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Password" required />
+            <button class="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60" :disabled="authLoading" type="submit">Log in</button>
+          </form>
+        </section>
+      </main>
+
+      <main class="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-12 lg:px-8" x-show="authReady && isAuthenticated">
+        <aside class="rounded-xl bg-white p-4 shadow-sm lg:col-span-4 xl:col-span-3">
+          <div class="mb-3">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Signed in as</p>
+            <p class="text-sm font-medium" x-text="authUser?.email"></p>
+          </div>
+
+          <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Groups</h2>
+            <button type="button" class="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500" @click="startGroupCreate()">New</button>
+          </div>
+
+          <div class="mb-3" x-show="groupForm.open">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <input x-model="groupForm.name" placeholder="Group name" class="mb-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-500 focus:ring" />
+              <div class="flex gap-2">
+                <button type="button" class="rounded-md bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-500" @click="saveGroup()">Save</button>
+                <button type="button" class="rounded-md bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-300" @click="cancelGroupForm()">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <template x-for="group in groupsVisible" :key="group.id">
+              <div class="rounded-lg border p-3" :class="selectedGroupId === group.id ? 'border-sky-500 bg-sky-50' : 'border-slate-200'">
+                <button type="button" class="w-full text-left" @click="selectGroup(group.id)">
+                  <div class="font-medium" x-text="group.name"></div>
+                  <div class="text-xs text-slate-500" x-text="group.memberCount + ' members · ' + group.expenseCount + ' expenses'"></div>
+                </button>
+                <div class="mt-2 flex gap-2">
+                  <button type="button" class="text-xs text-sky-700 hover:underline" @click="startGroupEdit(group.id)">Edit</button>
+                  <button type="button" class="text-xs text-rose-700 hover:underline" @click="deleteGroup(group.id)">Delete</button>
+                </div>
+              </div>
+            </template>
+            <p x-show="groupsVisible.length === 0" class="text-sm text-slate-500">No groups yet. Create or join one using an invite link.</p>
+          </div>
+        </aside>
+
+        <section class="rounded-xl bg-white p-4 shadow-sm lg:col-span-8 xl:col-span-9" x-show="currentGroup">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-2xl font-semibold" x-text="currentGroup?.name"></h2>
+              <p class="text-sm text-slate-500">Manage expenses, balances, and members</p>
+            </div>
+            <button type="button" class="rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100" @click="shareInvite()">Share Invite Link</button>
+          </div>
+
+          <div class="mb-4 grid grid-cols-3 gap-2 rounded-lg border border-slate-200 p-1 text-sm">
+            <button type="button" class="flex items-center justify-center gap-2 rounded-md px-2 py-2" :class="tab === 'expenses' ? 'bg-slate-900 text-white' : 'hover:bg-slate-100'" @click="tab = 'expenses'">
+              <span class="inline-flex h-5 w-5 items-center justify-center rounded bg-slate-200 text-[10px] font-bold text-slate-700" :class="tab === 'expenses' ? 'bg-slate-700 text-white' : ''">$</span><span>Expenses</span>
+            </button>
+            <button type="button" class="flex items-center justify-center gap-2 rounded-md px-2 py-2" :class="tab === 'balance' ? 'bg-slate-900 text-white' : 'hover:bg-slate-100'" @click="tab = 'balance'">
+              <span class="inline-flex h-5 w-5 items-center justify-center rounded bg-slate-200 text-[10px] font-bold text-slate-700" :class="tab === 'balance' ? 'bg-slate-700 text-white' : ''">=</span><span>Balance</span>
+            </button>
+            <button type="button" class="flex items-center justify-center gap-2 rounded-md px-2 py-2" :class="tab === 'users' ? 'bg-slate-900 text-white' : 'hover:bg-slate-100'" @click="tab = 'users'">
+              <span class="inline-flex h-5 w-5 items-center justify-center rounded bg-slate-200 text-[10px] font-bold text-slate-700" :class="tab === 'users' ? 'bg-slate-700 text-white' : ''">@</span><span>Users</span>
+            </button>
+          </div>
+
+          <div x-show="tab === 'users'">
+            <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <h3 class="mb-1 text-sm font-semibold">Add Participant</h3>
+              <p class="mb-2 text-xs text-slate-500">Use Share Invite Link to give someone access to the group. This form adds a participant for expense tracking and can also store an invited email.</p>
+              <div class="grid gap-2 md:grid-cols-4">
+                <input x-model="memberForm.name" placeholder="Name" class="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <input x-model="memberForm.email" placeholder="Email (optional)" class="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label class="flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                  <input type="checkbox" x-model="memberForm.isOffline" />
+                  Offline user
+                </label>
+                <button type="button" class="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500" @click="saveMember()">Add</button>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <template x-for="member in groupMembers" :key="member.id">
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3">
+                  <div>
+                    <div class="font-medium" x-text="member.name"></div>
+                    <div class="text-xs text-slate-500">
+                      <span x-text="member.isOffline ? 'Offline member' : (member.email || 'Registered user')"></span>
+                      <span x-show="!member.isOffline && member.email && !member.authUserId"> · Invite pending</span>
+                    </div>
+                  </div>
+                  <div class="flex gap-3 text-xs">
+                    <button type="button" class="text-sky-700 hover:underline" @click="startMemberEdit(member.id)">Edit</button>
+                    <button type="button" class="text-rose-700 hover:underline" @click="deleteMember(member.id)">Remove</button>
+                  </div>
+                </div>
+              </template>
+              <p x-show="groupMembers.length === 0" class="text-sm text-slate-500">No users in this group yet.</p>
+            </div>
+          </div>
+
+          <div x-show="tab === 'expenses'">
+            <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <h3 class="mb-2 text-sm font-semibold" x-text="expenseForm.id ? 'Edit Expense' : 'Add Expense'"></h3>
+              <div class="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                <input x-model="expenseForm.description" placeholder="Description" class="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <input type="number" step="0.01" min="0" x-model.number="expenseForm.amount" placeholder="Amount (GBP)" class="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <label class="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <span>Paid by</span>
+                  <select x-model="expenseForm.paidBy" class="rounded-md border border-slate-300 px-3 py-2 text-sm font-normal tracking-normal text-slate-900">
+                    <option value="">Select payer</option>
+                    <template x-for="member in groupMembers" :key="member.id">
+                      <option :value="member.id" x-text="member.id === currentUserMemberProfile()?.id ? `${member.name} (You)` : member.name"></option>
+                    </template>
+                  </select>
+                </label>
+                <label class="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <span>When</span>
+                  <input type="datetime-local" x-model="expenseForm.date" class="rounded-md border border-slate-300 px-3 py-2 text-sm font-normal tracking-normal text-slate-900" />
+                </label>
+                <select x-model="expenseForm.splitMode" class="rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option value="equal">Equal split</option>
+                  <option value="percentage">By percentage</option>
+                  <option value="amount">By amount</option>
+                </select>
+                <button type="button" class="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500" @click="saveExpense()" x-text="expenseForm.id ? 'Update' : 'Add'"></button>
+              </div>
+
+              <div class="mt-3 rounded-md border border-slate-200 bg-white p-3">
+                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Participants (default: all users, equal split)</p>
+                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <template x-for="member in groupMembers" :key="member.id">
+                    <div class="rounded-md border border-slate-200 p-2">
+                      <label class="mb-1 flex items-center justify-between text-sm">
+                        <span x-text="member.name"></span>
+                        <input type="checkbox" :checked="expenseParticipantIncluded(member.id)" @change="toggleExpenseParticipant(member.id)" />
+                      </label>
+                      <input
+                        x-show="expenseParticipantIncluded(member.id) && expenseForm.splitMode !== 'equal'"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        :placeholder="expenseForm.splitMode === 'percentage' ? 'Percent %' : 'Amount in GBP'"
+                        :value="expenseParticipantValue(member.id)"
+                        @input="setExpenseParticipantValue(member.id, $event.target.value)"
+                        class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      />
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <template x-for="expense in groupExpensesSorted" :key="expense.id">
+                <div class="rounded-lg border border-slate-200 p-3">
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div class="font-medium" x-text="expense.description"></div>
+                      <div class="text-xs text-slate-500">
+                        <span x-text="formatMoney(expense.amount)"></span>
+                        <span> · Paid by </span>
+                        <span x-text="memberName(expense.paidBy)"></span>
+                        <span> · </span>
+                        <span x-text="formatExpenseDate(expense.date)"></span>
+                      </div>
+                      <div class="mt-1 text-xs text-slate-600" x-text="expenseSplitSummary(expense)"></div>
+                    </div>
+                    <div class="flex gap-3 text-xs">
+                      <button type="button" class="text-sky-700 hover:underline" @click="startExpenseEdit(expense.id)">Edit</button>
+                      <button type="button" class="text-rose-700 hover:underline" @click="deleteExpense(expense.id)">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <p x-show="groupExpensesSorted.length === 0" class="text-sm text-slate-500">No expenses yet.</p>
+            </div>
+          </div>
+
+          <div x-show="tab === 'balance'">
+            <div class="grid gap-3 md:grid-cols-2">
+              <div class="rounded-lg border border-slate-200 p-3">
+                <h3 class="mb-2 text-sm font-semibold">Net balances</h3>
+                <template x-for="line in balanceLines" :key="line.memberId">
+                  <div class="flex justify-between border-b border-slate-100 py-2 text-sm">
+                    <span x-text="line.name"></span>
+                    <span :class="line.net >= 0 ? 'text-emerald-700' : 'text-rose-700'" x-text="(line.net >= 0 ? '+' : '') + formatMoney(line.net)"></span>
+                  </div>
+                </template>
+              </div>
+              <div class="rounded-lg border border-slate-200 p-3">
+                <h3 class="mb-2 text-sm font-semibold">Suggested settlements</h3>
+                <template x-for="tx in settlements" :key="tx.from + tx.to + tx.amount">
+                  <div class="border-b border-slate-100 py-2 text-sm">
+                    <span class="font-medium" x-text="memberName(tx.from)"></span>
+                    <span> pays </span>
+                    <span class="font-medium" x-text="memberName(tx.to)"></span>
+                    <span> </span>
+                    <span class="font-semibold" x-text="formatMoney(tx.amount)"></span>
+                  </div>
+                </template>
+                <p x-show="settlements.length === 0" class="text-sm text-slate-500">No settlements needed.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-xl bg-white p-6 text-center shadow-sm lg:col-span-8 xl:col-span-9" x-show="!currentGroup">
+          <h2 class="text-xl font-semibold">Create or join a group</h2>
+          <p class="mt-2 text-sm text-slate-500">You only see groups where your account has membership.</p>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

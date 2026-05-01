@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+
+data/pocketbase.zip
+data/pocketbase_mac/
+
+npm-debug.log*
